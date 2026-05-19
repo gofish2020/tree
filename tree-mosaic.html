@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <title>树影拼图生成器</title>
+  <style>
+    :root {
+      --bg: #111318;
+      --panel: rgba(24, 28, 36, 0.92);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #eef0f3;
+      --muted: #9aa3ad;
+      --accent: #6dbd8e;
+      --accent2: #7eb8da;
+      --danger: #f08080;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 14px;
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 14px;
+      min-height: 100vh;
+    }
+    @media (max-width: 960px) { .app { grid-template-columns: 1fr; } }
+    h1 { font-size: 1.1rem; font-weight: 600; }
+    .subtitle { font-size: 0.75rem; color: var(--muted); margin: 4px 0 12px; }
+    .sidebar { display: flex; flex-direction: column; gap: 10px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px;
+    }
+    .panel-title {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 14px 8px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(109, 189, 142, 0.06);
+      color: var(--text);
+    }
+    .dropzone.ok { border-style: solid; border-color: var(--accent); color: var(--accent); }
+    .dropzone input { display: none; }
+    .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; max-height: 88px; overflow-y: auto; }
+    .thumb-wrap { position: relative; flex-shrink: 0; }
+    .thumbs img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; display: block; }
+    .thumb-wrap.is-default img { box-shadow: 0 0 0 1px var(--accent); }
+    .thumb-wrap.is-default::after {
+      content: '';
+      position: absolute;
+      right: 2px; bottom: 2px;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .ctrl { margin-bottom: 10px; }
+    .ctrl:last-child { margin-bottom: 0; }
+    label.row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    label.row span { color: var(--accent); font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .checks { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+    .checks label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .checks input { accent-color: var(--accent); }
+    .hint { font-size: 0.7rem; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+    .hint.subtle { margin-top: 2px; margin-bottom: 4px; font-size: 0.68rem; }
+    button {
+      padding: 9px 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-main { background: var(--accent); color: #0e1612; width: 100%; }
+    .btn-main:not(:disabled):hover { filter: brightness(1.08); }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 100%;
+    }
+    .progress { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; margin-top: 8px; display: none; }
+    .progress.on { display: block; }
+    .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
+    .status { font-size: 0.7rem; color: var(--muted); margin-top: 5px; min-height: 1em; }
+    .err {
+      display: none;
+      padding: 8px;
+      border-radius: 6px;
+      background: rgba(240,128,128,0.12);
+      border: 1px solid rgba(240,128,128,0.35);
+      color: var(--danger);
+      font-size: 0.8rem;
+    }
+    .err.on { display: block; }
+
+    .main-area { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .stage {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .stage-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .stage-head h2 { font-size: 0.88rem; font-weight: 500; }
+    .stage-head .badge {
+      font-size: 0.68rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: rgba(109,189,142,0.15);
+      color: var(--accent);
+    }
+    .stage-head .badge.wait { background: rgba(255,255,255,0.06); color: var(--muted); }
+    .stage-body {
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .stage-body canvas { max-width: 100%; max-height: 42vh; display: block; }
+    .stage-foot {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .stage-foot .btn-main,
+    .stage-foot .btn-ghost { width: auto; flex: 1; min-width: 100px; }
+    .stage-foot .status { margin: 0; flex: 1; }
+    .placeholder {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding: 28px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    #stage2 { border-color: rgba(126, 184, 218, 0.25); }
+    #stage2 .stage-head h2 { color: var(--accent2); }
+    #stage2 .btn-main { background: var(--accent2); color: #0a1218; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header>
+        <h1>树影拼图生成器</h1>
+        <p class="subtitle">双阶段预览 · 先确认分区再生成拼贴</p>
+      </header>
+
+      <section class="panel">
+        <div class="panel-title">主图</div>
+        <div class="dropzone" id="mainZone">
+          <input type="file" id="mainInput" accept="image/*">
+          <p id="mainHint">上传树木剪影主图</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">填充素材</div>
+        <div class="dropzone" id="texZone">
+          <input type="file" id="texInput" accept="image/*" multiple>
+          <p id="texHint">正在加载默认 flowers 素材…</p>
+        </div>
+        <div class="thumbs" id="texThumbs"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">检测与分区</div>
+        <div class="ctrl">
+          <label class="row">检测灵敏度 <span id="sensVal">101</span></label>
+          <input type="range" id="sensitivity" min="10" max="120" value="101" disabled>
+        </div>
+        <div class="ctrl">
+          <label class="row">主杆阈值 <span id="trunkVal">120</span></label>
+          <input type="range" id="trunk" min="10" max="120" value="120" disabled>
+        </div>
+        <div class="ctrl">
+          <label class="row">块面简洁度 <span id="simplicityVal">87</span></label>
+          <input type="range" id="regionSimplicity" min="20" max="100" value="87" disabled>
+        </div>
+        <p class="hint subtle" id="regionHint">越高→块越大、越清爽；越低→分区越细碎</p>
+        <div class="ctrl">
+          <label class="row">拼贴透明度 <span id="opacityVal">40%</span></label>
+          <input type="range" id="texOpacity" min="5" max="100" value="40" disabled>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="keepBg" checked disabled> 保留未分区原图</label>
+          <label><input type="checkbox" id="keepBranch" checked disabled> 保留树枝原色（不拼贴）</label>
+          <label><input type="checkbox" id="softEdge" checked disabled> 边界柔和过渡</label>
+        </div>
+        <p class="hint">生成拼贴严格按「分区预览」的色块边界；素材等比缩放填入、不拉伸。快速≈1280px，高清≈2400px。</p>
+      </section>
+
+      <div class="err" id="error"></div>
+      <p class="status" id="globalStatus"></p>
+    </aside>
+
+    <div class="main-area">
+      <!-- 区域一：分区色块预览 -->
+      <section class="stage" id="stage1">
+        <div class="stage-head">
+          <h2>① 分区预览</h2>
+          <span class="badge wait" id="badge1">等待主图</span>
+          <span class="status" id="dimInfo"></span>
+        </div>
+        <div class="stage-body">
+          <p class="placeholder" id="ph1">上传主图后，此处显示原图 + 色块分区（可填充区域）</p>
+          <canvas id="canvasRegions" hidden></canvas>
+        </div>
+        <div class="stage-foot">
+          <span class="status" id="status1">彩色色块 = 将被素材填充的区域 · 深色 = 树枝</span>
+        </div>
+      </section>
+
+      <!-- 区域二：最终拼贴 -->
+      <section class="stage" id="stage2">
+        <div class="stage-head">
+          <h2>② 最终拼贴</h2>
+          <span class="badge wait" id="badge2">等待分区确认</span>
+        </div>
+        <div class="stage-body">
+          <p class="placeholder" id="ph2">分区预览满意后，点击下方按钮生成素材拼贴效果</p>
+          <canvas id="canvasFinal" hidden></canvas>
+        </div>
+        <div class="stage-foot">
+          <button class="btn-main" id="btnMosaicFast" disabled title="">快速生成</button>
+          <button class="btn-ghost" id="btnMosaicHd" disabled title="">高清生成</button>
+          <button class="btn-ghost" id="btnDownload" disabled>下载 PNG</button>
+          <div class="progress" id="progress"><i id="progressBar"></i></div>
+          <span class="status" id="status2"></span>
+          <span class="status" id="mosaicHint"></span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    window.addEventListener('error', (e) => {
+      const el = document.getElementById('error');
+      if (el) {
+        el.textContent = '脚本错误：' + (e.message || '未知');
+        el.classList.add('on');
+      }
+    });
+
+    const CFG = {
+      MAX_SIZE: 4096,
+      PREVIEW_MAX: 880,
+      BLUR_RADIUS: 1,
+      MORPH_RADIUS: 1,
+      FEATHER_ON: 6,
+      FEATHER_OFF: 0,
+      REGION_ALPHA: 0.82,
+      REGION_BORDER: false,     // 关闭细碎描边，预览更干净
+      MIN_REGION_RATIO: 0.012,  // 小于背景 1.2% 的碎块合并到邻区
+      SEED_SPACING: 0.82,       // 种子间距系数（越大块面越大）
+      RENDER_BATCH: 12,
+      TEXTURE_OPACITY: 0.4,       // 拼贴素材透明度
+      MOSAIC_FAST_MAX: 1280,      // 快速生成最大边长
+      MOSAIC_HD_MAX: 2400,        // 高清生成最大边长
+      // 必须用站点根路径，避免相对 tree-mosaic.html 解析成 /tree-mosaic.html/flowers/
+      FLOWERS_DIR: '/flowers/'
+    };
+
+    /** 刷新页面时解析 HTTP 目录列表，自动发现 flowers/ 中的图片 */
+    const FlowersCatalog = {
+      _natKey(name) {
+        return name.split(/(\d+)/).map((p) => (/^\d+$/.test(p) ? Number(p) : p.toLowerCase()));
+      },
+
+      _parseListing(html) {
+        const imgRe = /\.(png|jpe?g|webp|gif|bmp)$/i;
+        const seen = new Set();
+        const files = [];
+        const add = (href) => {
+          if (!href || href === '../' || href.endsWith('/') || href.startsWith('?')) return;
+          const name = decodeURIComponent(href.split('/').pop() || '');
+          if (!name || name.startsWith('.') || name === 'manifest.json') return;
+          if (!imgRe.test(name) || seen.has(name)) return;
+          seen.add(name);
+          files.push(name);
+        };
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('a[href]').forEach((a) => add(a.getAttribute('href') || ''));
+        if (!files.length) {
+          const re = /href=["']([^"']+)["']/gi;
+          let m;
+          while ((m = re.exec(html))) add(m[1]);
+        }
+        files.sort((a, b) => {
+          const ka = this._natKey(a);
+          const kb = this._natKey(b);
+          for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+            if (ka[i] === kb[i]) continue;
+            if (ka[i] === undefined) return -1;
+            if (kb[i] === undefined) return 1;
+            return ka[i] < kb[i] ? -1 : 1;
+          }
+          return 0;
+        });
+        return files;
+      },
+
+      async discover() {
+        const base = CFG.FLOWERS_DIR.endsWith('/') ? CFG.FLOWERS_DIR : CFG.FLOWERS_DIR + '/';
+        const res = await fetch(base + '?_=' + Date.now());
+        if (!res.ok) throw new Error('无法读取 flowers 目录（' + res.status + '）');
+        const files = this._parseListing(await res.text());
+        if (!files.length) throw new Error('flowers 目录中未找到图片');
+        return files;
+      }
+    };
+
+    /* ===== 图像工具 ===== */
+    const ImageUtil = {
+      loadFile(file) {
+        return new Promise((resolve, reject) => {
+          if (!file?.type?.startsWith('image/')) return reject(new Error('请选择图片文件'));
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片加载失败')); };
+          img.src = url;
+        });
+      },
+
+      /**
+       * 通过 Blob 加载图片，避免 canvas 跨域污染（getImageData / toDataURL）
+       * file:// 下用 fetch 读本地同目录文件
+       */
+      async loadSafeUrl(src) {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error('无法加载: ' + src);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = await new Promise((resolve, reject) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = () => reject(new Error('解码失败: ' + src));
+            im.src = url;
+          });
+          img._blobUrl = url;
+          img._safe = true;
+          return img;
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          throw e;
+        }
+      },
+
+      /** 将任意图片转为同源 canvas（用于拼贴绘制） */
+      toSafeCanvas(img, maxW, maxH) {
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        const fit = ImageUtil.fit(iw, ih, maxW || iw);
+        const c = document.createElement('canvas');
+        c.width = fit.w;
+        c.height = fit.h;
+        c.getContext('2d').drawImage(img, 0, 0, fit.w, fit.h);
+        return c;
+      },
+      fit(w, h, max) {
+        if (Math.max(w, h) <= max) return { w, h };
+        const s = max / Math.max(w, h);
+        return { w: Math.round(w * s), h: Math.round(h * s) };
+      },
+      toCanvas(img, w, h) {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, w, h);
+        return c;
+      },
+      getData(c) {
+        return c.getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, c.width, c.height);
+      }
+    };
+
+    /* ===== 树枝检测：边缘采样 + 灵敏度 + 主杆阈值 ===== */
+    const BranchDetector = {
+      /**
+       * @returns {Uint8Array} 255=树枝, 0=背景
+       */
+      detect(imageData, sensitivity, trunkLevel) {
+        const w = imageData.width, h = imageData.height, n = w * h;
+        let gray = this.toGray(imageData);
+        if (CFG.BLUR_RADIUS > 0) gray = this.gaussianBlur(gray, w, h, CFG.BLUR_RADIUS);
+
+        const bg = this.sampleEdges(gray, w, h);
+        const branchT = this.branchThreshold(bg, sensitivity);
+        const trunkT = this.trunkThreshold(branchT, trunkLevel);
+
+        let mask = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          const g = gray[i];
+          if (g < trunkT) mask[i] = 255;
+          else if (g < branchT) mask[i] = 255;
+          else mask[i] = 0;
+        }
+
+        if (CFG.MORPH_RADIUS > 0) mask = this.morphClose(mask, w, h, CFG.MORPH_RADIUS);
+
+        const bc = mask.reduce((s, v) => s + (v > 0), 0);
+        if (bc < n * 0.005) throw new Error('树枝过少，请提高灵敏度或主杆阈值');
+        if (bc > n * 0.92) throw new Error('树枝过多，请降低灵敏度');
+        return mask;
+      },
+
+      toGray(imageData) {
+        const d = imageData.data, g = new Float32Array(d.length / 4);
+        for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+          g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        }
+        return g;
+      },
+
+      sampleEdges(gray, w, h) {
+        const band = Math.max(2, Math.round(Math.min(w, h) * 0.04));
+        const samples = [];
+        const add = (x, y) => samples.push(gray[y * w + x]);
+        for (let y = 0; y < band; y++)
+          for (let x = 0; x < w; x++) { add(x, y); add(x, h - 1 - y); }
+        for (let y = band; y < h - band; y++)
+          for (let x = 0; x < band; x++) { add(x, y); add(x, w - 1 - x); }
+        if (!samples.length) return { median: 200, p75: 220 };
+        samples.sort((a, b) => a - b);
+        const len = samples.length;
+        return {
+          median: samples[len >> 1],
+          p75: samples[Math.min(len - 1, (len * 0.75) | 0)]
+        };
+      },
+
+      branchThreshold(bg, sensitivity) {
+        const base = bg.p75 * 0.55 + bg.median * 0.45;
+        const offset = 8 + ((sensitivity - 65) / 55) * 42;
+        return Math.max(25, Math.min(245, base - offset));
+      },
+
+      /** 主杆阈值：比通用阈值更低，强制更暗区域为树干 */
+      trunkThreshold(branchT, trunkLevel) {
+        const extra = ((trunkLevel - 65) / 55) * 38;
+        return Math.max(8, branchT - 18 - extra);
+      },
+
+      gaussianBlur(src, w, h, r) {
+        const k = this._kernel(r);
+        const tmp = new Float32Array(src.length);
+        const out = new Float32Array(src.length);
+        this._convH(src, tmp, w, h, k);
+        this._convV(tmp, out, w, h, k);
+        return out;
+      },
+      _kernel(r) {
+        const n = r * 2 + 1, k = new Float32Array(n);
+        const sig = r / 2 + 0.5;
+        let s = 0;
+        for (let i = 0; i < n; i++) { k[i] = Math.exp(-((i - r) ** 2) / (2 * sig * sig)); s += k[i]; }
+        for (let i = 0; i < n; i++) k[i] /= s;
+        return k;
+      },
+      _convH(s, d, w, h, k) {
+        const r = (k.length - 1) >> 1;
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            let v = 0;
+            for (let i = -r; i <= r; i++) v += s[y * w + Math.min(w - 1, Math.max(0, x + i))] * k[i + r];
+            d[y * w + x] = v;
+          }
+      },
+      _convV(s, d, w, h, k) {
+        const r = (k.length - 1) >> 1;
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            let v = 0;
+            for (let i = -r; i <= r; i++) v += s[Math.min(h - 1, Math.max(0, y + i)) * w + x] * k[i + r];
+            d[y * w + x] = v;
+          }
+      },
+      morphClose(m, w, h, r) {
+        return this._erode(this._dilate(m, w, h, r), w, h, r);
+      },
+      _dilate(s, w, h, r) {
+        const d = new Uint8Array(s.length);
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            let mx = 0;
+            for (let dy = -r; dy <= r; dy++)
+              for (let dx = -r; dx <= r; dx++) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) mx = Math.max(mx, s[ny * w + nx]);
+              }
+            d[y * w + x] = mx;
+          }
+        return d;
+      },
+      _erode(s, w, h, r) {
+        const d = new Uint8Array(s.length);
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            let mn = 255;
+            for (let dy = -r; dy <= r; dy++)
+              for (let dx = -r; dx <= r; dx++) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) mn = Math.min(mn, s[ny * w + nx]);
+              }
+            d[y * w + x] = mn;
+          }
+        return d;
+      }
+    };
+
+    /* ===== 区域分割：Poisson 种子 + 四向 BFS + 碎块合并 ===== */
+    const RegionGen = {
+      /** 简洁度 20~100 → 区域数量（越高块越大） */
+      countFromSimplicity(simplicity, bgPixels) {
+        const t = (simplicity - 20) / 80;
+        const maxCount = Math.max(18, Math.min(90, Math.floor(Math.sqrt(bgPixels) / 14)));
+        const minCount = Math.max(12, Math.floor(maxCount * 0.35));
+        const count = Math.round(maxCount - t * (maxCount - minCount));
+        return Math.max(12, Math.min(maxCount, count));
+      },
+
+      generate(branchMask, w, h, simplicity) {
+        const bg = [];
+        for (let i = 0; i < branchMask.length; i++) {
+          if (branchMask[i] === 0) bg.push(i);
+        }
+        if (!bg.length) throw new Error('没有可填充的背景区域');
+
+        const count = this.countFromSimplicity(simplicity, bg.length);
+        const seeds = this._poissonSeeds(bg, w, h, count);
+        const map = new Int32Array(branchMask.length);
+        for (let i = 0; i < branchMask.length; i++) {
+          map[i] = branchMask[i] > 0 ? -2 : -1;
+        }
+
+        this._bfs(map, w, h, seeds);
+        const minPixels = Math.max(80, Math.floor(bg.length * CFG.MIN_REGION_RATIO));
+        const regionCount = this._mergeSmallRegions(map, w, h, minPixels);
+
+        return { regionMap: map, regionCount, seedCount: seeds.length };
+      },
+
+      /** Poisson 式种子：保证种子间距，避免扎堆造成碎块 */
+      _poissonSeeds(indices, w, h, count) {
+        const avgArea = indices.length / count;
+        const minDist = Math.sqrt(avgArea) * CFG.SEED_SPACING;
+        const minDistSq = minDist * minDist;
+        const shuffled = indices.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        const seeds = [];
+        for (const idx of shuffled) {
+          if (seeds.length >= count) break;
+          const x = idx % w, y = (idx / w) | 0;
+          let ok = true;
+          for (const s of seeds) {
+            const sx = s % w, sy = (s / w) | 0;
+            const dx = x - sx, dy = y - sy;
+            if (dx * dx + dy * dy < minDistSq) { ok = false; break; }
+          }
+          if (ok) seeds.push(idx);
+        }
+
+        while (seeds.length < count && seeds.length < indices.length) {
+          const idx = shuffled[(Math.random() * shuffled.length) | 0];
+          if (!seeds.includes(idx)) seeds.push(idx);
+        }
+        return seeds;
+      },
+
+      /** 四向 BFS：块面边缘更规整，视觉更干净 */
+      _bfs(map, w, h, seeds) {
+        const q = new Int32Array(map.length);
+        let head = 0, tail = 0;
+        const nb = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+        seeds.forEach((idx, id) => { map[idx] = id; q[tail++] = idx; });
+
+        while (head < tail) {
+          const idx = q[head++], rid = map[idx];
+          const x = idx % w, y = (idx / w) | 0;
+          for (const [dx, dy] of nb) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+            const ni = ny * w + nx;
+            if (map[ni] !== -1) continue;
+            map[ni] = rid;
+            q[tail++] = ni;
+          }
+        }
+
+        for (let pass = 0; pass < 24; pass++) {
+          let ch = false;
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) {
+              const i = y * w + x;
+              if (map[i] !== -1) continue;
+              for (const [dx, dy] of nb) {
+                const ni = (y + dy) * w + (x + dx);
+                if (map[ni] >= 0) { map[i] = map[ni]; ch = true; break; }
+              }
+            }
+          if (!ch) break;
+        }
+        for (let i = 0; i < map.length; i++) {
+          if (map[i] === -1) map[i] = 0;
+        }
+      },
+
+      /** 将过小碎块并入相邻最大区块 */
+      _mergeSmallRegions(map, w, h, minPixels) {
+        const nb = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        let changed = true;
+        let guard = 0;
+
+        while (changed && guard < 64) {
+          changed = false;
+          guard++;
+          const counts = new Map();
+          for (let i = 0; i < map.length; i++) {
+            const r = map[i];
+            if (r < 0) continue;
+            counts.set(r, (counts.get(r) || 0) + 1);
+          }
+
+          for (const [rid, cnt] of counts) {
+            if (cnt >= minPixels) continue;
+            const adj = new Map();
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const i = y * w + x;
+                if (map[i] !== rid) continue;
+                for (const [dx, dy] of nb) {
+                  const ni = (y + dy) * w + (x + dx);
+                  const nr = map[ni];
+                  if (nr >= 0 && nr !== rid) {
+                    adj.set(nr, (adj.get(nr) || 0) + 1);
+                  }
+                }
+              }
+            }
+            let best = -1, bestN = 0;
+            for (const [nr, n] of adj) {
+              if (n > bestN) { bestN = n; best = nr; }
+            }
+            if (best < 0) continue;
+            for (let i = 0; i < map.length; i++) {
+              if (map[i] === rid) map[i] = best;
+            }
+            changed = true;
+          }
+        }
+
+        return this._compactIds(map);
+      },
+
+      _compactIds(map) {
+        const remap = new Map();
+        let next = 0;
+        for (let i = 0; i < map.length; i++) {
+          const r = map[i];
+          if (r < 0) continue;
+          if (!remap.has(r)) remap.set(r, next++);
+          map[i] = remap.get(r);
+        }
+        return next;
+      },
+
+      /** 统计可填充像素数（调试用） */
+      countFillable(map) {
+        let n = 0;
+        for (let i = 0; i < map.length; i++) if (map[i] >= 0) n++;
+        return n;
+      },
+
+      bounds(map, w, h, n) {
+        const b = Array.from({ length: n }, () => ({
+          minX: w, minY: h, maxX: 0, maxY: 0, pixels: 0
+        }));
+        for (let y = 0; y < h; y++)
+          for (let x = 0; x < w; x++) {
+            const r = map[y * w + x];
+            if (r < 0) continue;
+            const box = b[r];
+            box.pixels++;
+            if (x < box.minX) box.minX = x;
+            if (y < box.minY) box.minY = y;
+            if (x > box.maxX) box.maxX = x;
+            if (y > box.maxY) box.maxY = y;
+          }
+        return b;
+      }
+    };
+
+    /** 将预览分区缩放到输出尺寸，保持与预览一致的区块边界 */
+    const PartitionMapper = {
+      scale(part, targetW, targetH) {
+        const { regionMap, mask, w, h, regionCount } = part;
+        if (w === targetW && h === targetH) {
+          return {
+            regionMap,
+            mask,
+            bounds: RegionGen.bounds(regionMap, w, h, regionCount),
+            regionCount,
+            w,
+            h
+          };
+        }
+        const newMap = new Int32Array(targetW * targetH);
+        const newMask = new Uint8Array(targetW * targetH);
+        for (let y = 0; y < targetH; y++) {
+          const sy = Math.min(h - 1, Math.round((y + 0.5) * h / targetH - 0.5));
+          for (let x = 0; x < targetW; x++) {
+            const sx = Math.min(w - 1, Math.round((x + 0.5) * w / targetW - 0.5));
+            const si = sy * w + sx;
+            const i = y * targetW + x;
+            newMap[i] = regionMap[si];
+            newMask[i] = mask[si];
+          }
+        }
+        return {
+          regionMap: newMap,
+          mask: newMask,
+          bounds: RegionGen.bounds(newMap, targetW, targetH, regionCount),
+          regionCount,
+          w: targetW,
+          h: targetH
+        };
+      }
+    };
+
+    /* ===== 调色板 ===== */
+    function regionColors(n) {
+      const colors = [];
+      for (let i = 0; i < n; i++) {
+        const h = (i * 137.508 + 18) % 360;
+        colors.push(hslToRgb(h, 58, 56));
+      }
+      return colors;
+    }
+
+    function hslToRgb(h, s, l) {
+      s /= 100; l /= 100;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = l - c / 2;
+      let r = 0, g = 0, b = 0;
+      if (h < 60) { r = c; g = x; }
+      else if (h < 120) { r = x; g = c; }
+      else if (h < 180) { g = c; b = x; }
+      else if (h < 240) { g = x; b = c; }
+      else if (h < 300) { r = x; b = c; }
+      else { r = c; b = x; }
+      return [
+        Math.round((r + m) * 255),
+        Math.round((g + m) * 255),
+        Math.round((b + m) * 255)
+      ];
+    }
+
+    /** 为每个分区随机分配素材索引（区块数≤素材数时尽量不重复） */
+    function randomTextureIndices(regionCount, texCount) {
+      const pick = new Int32Array(regionCount);
+      if (texCount < 1) return pick;
+      if (regionCount <= texCount) {
+        const pool = Array.from({ length: texCount }, (_, i) => i);
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        for (let r = 0; r < regionCount; r++) pick[r] = pool[r];
+      } else {
+        for (let r = 0; r < regionCount; r++) {
+          pick[r] = (Math.random() * texCount) | 0;
+        }
+      }
+      return pick;
+    }
+
+    /* ===== 渲染 ===== */
+    const Render = {
+      /** 区域一：高对比色块标记可填充区域（预览专用，始终醒目） */
+      drawRegionPreview(canvas, sourceCanvas, regionMap, branchMask, w, h, regionCount) {
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        const out = ctx.createImageData(w, h);
+        const od = out.data;
+        const colors = regionColors(regionCount);
+
+        for (let i = 0; i < w * h; i++) {
+          const j = i * 4;
+          const rid = regionMap[i];
+          const isBranch = branchMask[i] > 0;
+
+          if (isBranch) {
+            od[j] = 12;
+            od[j + 1] = 14;
+            od[j + 2] = 18;
+            od[j + 3] = 255;
+          } else if (rid >= 0) {
+            const c = colors[rid];
+            od[j] = c[0];
+            od[j + 1] = c[1];
+            od[j + 2] = c[2];
+            od[j + 3] = 255;
+          } else {
+            od[j] = 140;
+            od[j + 1] = 140;
+            od[j + 2] = 145;
+            od[j + 3] = 255;
+          }
+        }
+
+        if (CFG.REGION_BORDER) {
+          this._drawRegionBorders(od, regionMap, branchMask, w, h);
+        }
+
+        ctx.putImageData(out, 0, 0);
+      },
+
+      /** 相邻分区边界描边，便于辨认区块 */
+      _drawRegionBorders(od, regionMap, branchMask, w, h) {
+        const nb = [[1, 0], [0, 1]];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            if (branchMask[i] > 0 || regionMap[i] < 0) continue;
+            const rid = regionMap[i];
+            let edge = false;
+            for (const [dx, dy] of nb) {
+              const nx = x + dx, ny = y + dy;
+              if (nx >= w || ny >= h) { edge = true; break; }
+              const ni = ny * w + nx;
+              if (branchMask[ni] > 0 || regionMap[ni] !== rid) { edge = true; break; }
+            }
+            if (!edge) continue;
+            const j = i * 4;
+            od[j] = Math.min(255, od[j] * 0.45 + 255 * 0.55);
+            od[j + 1] = Math.min(255, od[j + 1] * 0.45 + 255 * 0.55);
+            od[j + 2] = Math.min(255, od[j + 2] * 0.45 + 255 * 0.55);
+            od[j + 3] = 255;
+          }
+        }
+      },
+
+      async drawMosaic(out, sourceCanvas, regionMap, branchMask, bounds, w, h, n, textures, opts, onProgress) {
+        const { keepBg, keepBranch, softEdge, textureOpacity } = opts;
+        const feather = softEdge ? CFG.FEATHER_ON : CFG.FEATHER_OFF;
+        const alpha = textureOpacity ?? CFG.TEXTURE_OPACITY;
+
+        out.width = w; out.height = h;
+        const ctx = out.getContext('2d');
+
+        // 1. 始终先铺完整原图（保证未拼贴区域有原色，不会变黑）
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(sourceCanvas, 0, 0);
+
+        const safeTex = textures.map((t) => {
+          if (!t._safeCanvas) t._safeCanvas = ImageUtil.toSafeCanvas(t, 640, 640);
+          return t._safeCanvas;
+        });
+        const texPick = randomTextureIndices(n, safeTex.length);
+
+        // 2. 每个色块：单张图 + 严格蒙版，区块之间不重叠
+        let drawn = 0;
+        for (let r = 0; r < n; r++) {
+          if (RegionFill.draw(
+            ctx, regionMap, branchMask, w, h, r, bounds[r],
+            safeTex[texPick[r]], feather, alpha
+          )) drawn++;
+          if (r % CFG.RENDER_BATCH === 0 || r === n - 1) {
+            if (onProgress) onProgress((r + 1) / n, `填充区块 ${r + 1} / ${n}`);
+            await new Promise((res) => requestAnimationFrame(res));
+          }
+        }
+
+        // 3. 非拼贴区域（树枝 + 未分区）强制 100% 还原原图
+        if (keepBranch) {
+          this._restoreOriginalWhere(ctx, sourceCanvas, branchMask, regionMap, w, h, (i) =>
+            branchMask[i] > 0
+          );
+        }
+        if (!keepBg) {
+          this._restoreOriginalWhere(ctx, sourceCanvas, branchMask, regionMap, w, h, (i) =>
+            regionMap[i] < 0
+          );
+        }
+
+        if (onProgress) onProgress(1, '完成');
+        return drawn;
+      },
+
+      /**
+       * 将原图指定像素贴回输出（合成蒙版，不读 getImageData）
+       * predicate(i) 为 true 的像素使用 100% 原图覆盖
+       */
+      _restoreOriginalWhere(ctx, sourceCanvas, branchMask, regionMap, w, h, predicate) {
+        const maskC = document.createElement('canvas');
+        maskC.width = w; maskC.height = h;
+        const md = maskC.getContext('2d').createImageData(w, h);
+        for (let i = 0; i < branchMask.length; i++) {
+          const j = i * 4;
+          const on = predicate(i) ? 255 : 0;
+          md.data[j] = md.data[j + 1] = md.data[j + 2] = 255;
+          md.data[j + 3] = on;
+        }
+        maskC.getContext('2d').putImageData(md, 0, 0);
+
+        const layer = document.createElement('canvas');
+        layer.width = w; layer.height = h;
+        const lctx = layer.getContext('2d');
+        lctx.drawImage(sourceCanvas, 0, 0);
+        lctx.globalCompositeOperation = 'destination-in';
+        lctx.drawImage(maskC, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(layer, 0, 0);
+      }
+    };
+
+    /**
+     * 单区块填充：整块仅一张图（cover），蒙版严格贴合分区，不渗透到邻块
+     */
+    const RegionFill = {
+      draw(ctx, regionMap, branchMask, w, h, rid, box, tex, feather, opacity) {
+        if (!box || box.pixels < 4) return false;
+
+        const bw = box.maxX - box.minX + 1;
+        const bh = box.maxY - box.minY + 1;
+        const layer = document.createElement('canvas');
+        layer.width = w;
+        layer.height = h;
+        const lctx = layer.getContext('2d');
+
+        const iw = tex.width;
+        const ih = tex.height;
+        // cover：等比放大至铺满包围盒，居中裁剪，单张不平铺
+        const scale = Math.max(bw / iw, bh / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        const dx = box.minX + (bw - dw) / 2;
+        const dy = box.minY + (bh - dh) / 2;
+        lctx.drawImage(tex, dx, dy, dw, dh);
+
+        const op = Math.max(0, Math.min(1, opacity ?? CFG.TEXTURE_OPACITY));
+        const maskData = lctx.createImageData(w, h);
+        const md = maskData.data;
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            const j = i * 4;
+            if (regionMap[i] !== rid) {
+              md[j + 3] = 0;
+              continue;
+            }
+            let a = 255;
+            if (feather > 0) {
+              const d = this._distToBranch(branchMask, w, h, x, y, feather);
+              if (d < feather) a = Math.round((d / feather) * 255);
+            }
+            md[j] = md[j + 1] = md[j + 2] = 255;
+            md[j + 3] = Math.round(a * op);
+          }
+        }
+
+        const maskC = document.createElement('canvas');
+        maskC.width = w;
+        maskC.height = h;
+        maskC.getContext('2d').putImageData(maskData, 0, 0);
+        lctx.globalCompositeOperation = 'destination-in';
+        lctx.drawImage(maskC, 0, 0);
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(layer, 0, 0);
+        return true;
+      },
+
+      /** 仅向树枝方向羽化，区块之间保持硬边界、互不重叠 */
+      _distToBranch(branchMask, w, h, x, y, R) {
+        let minD = R;
+        for (let dy = -R; dy <= R; dy++) {
+          for (let dx = -R; dx <= R; dx++) {
+            if (!dx && !dy) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              minD = Math.min(minD, Math.hypot(dx, dy));
+              continue;
+            }
+            if (branchMask[ny * w + nx] > 0) {
+              minD = Math.min(minD, Math.hypot(dx, dy));
+            }
+          }
+        }
+        return minD;
+      }
+    };
+
+    /* ===== 应用 ===== */
+    class App {
+      constructor() {
+        this.workCanvas = null;
+        this.textures = [];
+        this.partition = null; // 分区预览结果（生成时缩放使用，不重新分割）
+        this.busy = false;
+        this.mosaicReady = false;
+
+        this.$ = {
+          mainZone: document.getElementById('mainZone'),
+          mainInput: document.getElementById('mainInput'),
+          mainHint: document.getElementById('mainHint'),
+          texZone: document.getElementById('texZone'),
+          texInput: document.getElementById('texInput'),
+          texHint: document.getElementById('texHint'),
+          texThumbs: document.getElementById('texThumbs'),
+          sensitivity: document.getElementById('sensitivity'),
+          sensVal: document.getElementById('sensVal'),
+          trunk: document.getElementById('trunk'),
+          trunkVal: document.getElementById('trunkVal'),
+          regionSimplicity: document.getElementById('regionSimplicity'),
+          simplicityVal: document.getElementById('simplicityVal'),
+          texOpacity: document.getElementById('texOpacity'),
+          opacityVal: document.getElementById('opacityVal'),
+          keepBg: document.getElementById('keepBg'),
+          keepBranch: document.getElementById('keepBranch'),
+          softEdge: document.getElementById('softEdge'),
+          canvasRegions: document.getElementById('canvasRegions'),
+          canvasFinal: document.getElementById('canvasFinal'),
+          ph1: document.getElementById('ph1'),
+          ph2: document.getElementById('ph2'),
+          badge1: document.getElementById('badge1'),
+          badge2: document.getElementById('badge2'),
+          status1: document.getElementById('status1'),
+          status2: document.getElementById('status2'),
+          mosaicHint: document.getElementById('mosaicHint'),
+          dimInfo: document.getElementById('dimInfo'),
+          btnMosaicFast: document.getElementById('btnMosaicFast'),
+          btnMosaicHd: document.getElementById('btnMosaicHd'),
+          btnDownload: document.getElementById('btnDownload'),
+          progress: document.getElementById('progress'),
+          progressBar: document.getElementById('progressBar'),
+          error: document.getElementById('error'),
+          globalStatus: document.getElementById('globalStatus')
+        };
+
+        this._bind();
+        this._loadDefaultTextures();
+      }
+
+      _bind() {
+        this._drop(this.$.mainZone, this.$.mainInput, (f) => this._loadMain(f[0]));
+        this._drop(this.$.texZone, this.$.texInput, (f) => this._loadTex(f));
+
+        const sliders = [
+          ['sensitivity', 'sensVal'],
+          ['trunk', 'trunkVal'],
+          ['regionSimplicity', 'simplicityVal']
+        ];
+        sliders.forEach(([id, valId]) => {
+          this.$[id].addEventListener('input', () => {
+            this.$[valId].textContent = this.$[id].value;
+            this._debouncePreview();
+          });
+        });
+
+        this.$.texOpacity.addEventListener('input', () => {
+          this.$.opacityVal.textContent = this.$.texOpacity.value + '%';
+          this.mosaicReady = false;
+          this._setBadge2('参数已改，请重新生成', 'wait');
+          this.$.btnDownload.disabled = true;
+          this._updateMosaicBtn();
+        });
+
+        [this.$.keepBg, this.$.keepBranch, this.$.softEdge].forEach((el) => {
+          el.addEventListener('change', () => {
+            this._debouncePreview();
+            this.mosaicReady = false;
+            this._setBadge2('分区已更新，请重新生成', 'wait');
+            this.$.btnDownload.disabled = true;
+          });
+        });
+
+        this.$.btnMosaicFast.addEventListener('click', () => this.generateMosaic(true));
+        this.$.btnMosaicHd.addEventListener('click', () => this.generateMosaic(false));
+        this.$.btnDownload.addEventListener('click', () => this.download());
+      }
+
+      _drop(zone, input, fn) {
+        zone.addEventListener('click', () => input.click());
+        input.addEventListener('change', (e) => e.target.files?.length && fn([...e.target.files]));
+        zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+        zone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          zone.classList.remove('dragover');
+          const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
+          if (files.length) fn(files);
+        });
+      }
+
+      _params() {
+        return {
+          sensitivity: +this.$.sensitivity.value,
+          trunk: +this.$.trunk.value,
+          regionSimplicity: +this.$.regionSimplicity.value,
+          keepBg: this.$.keepBg.checked,
+          keepBranch: this.$.keepBranch.checked,
+          softEdge: this.$.softEdge.checked,
+          textureOpacity: +this.$.texOpacity.value / 100
+        };
+      }
+
+      _partitionKey(params) {
+        return [params.sensitivity, params.trunk, params.regionSimplicity].join(',');
+      }
+
+      _opacityLabel() {
+        return this.$.texOpacity.value + '%';
+      }
+
+      _enableControls(on) {
+        ['sensitivity', 'trunk', 'regionSimplicity', 'texOpacity', 'keepBg', 'keepBranch', 'softEdge'].forEach((id) => {
+          this.$[id].disabled = !on;
+        });
+      }
+
+      _debouncePreview() {
+        clearTimeout(this._timer);
+        this._timer = setTimeout(() => this.updateRegionPreview(), 220);
+      }
+
+      async _loadMain(file) {
+        if (!file) return;
+        this._err('');
+        try {
+          const img = await ImageUtil.loadFile(file);
+          const fit = ImageUtil.fit(img.width, img.height, CFG.MAX_SIZE);
+          this.workCanvas = ImageUtil.toCanvas(img, fit.w, fit.h);
+          this.$.mainZone.classList.add('ok');
+          this.$.mainHint.textContent = `${file.name} (${fit.w}×${fit.h})`;
+          this.$.dimInfo.textContent = `${fit.w} × ${fit.h}`;
+          this._enableControls(true);
+          this.mosaicReady = false;
+          this.$.btnDownload.disabled = true;
+          await this.updateRegionPreview();
+        } catch (e) {
+          this._err(e.message);
+        }
+      }
+
+      async _loadDefaultTextures() {
+        let files = [];
+        try {
+          files = await FlowersCatalog.discover();
+        } catch (e) {
+          console.warn('[tree-mosaic]', e.message);
+          this.$.texHint.textContent = '请用 http 服务打开页面（如 ./start.sh），刷新后可自动识别 flowers 中的图片';
+          this._refreshTexUI();
+          this._updateMosaicBtn();
+          return;
+        }
+
+        if (!files.length) {
+          this.$.texHint.textContent = 'flowers 文件夹暂无图片，放入后刷新页面即可';
+          this._refreshTexUI();
+          this._updateMosaicBtn();
+          return;
+        }
+
+        this.textures = this.textures.filter((t) => t._texSource !== 'default');
+        let ok = 0;
+        await Promise.all(files.map(async (name) => {
+          const path = CFG.FLOWERS_DIR + name;
+          try {
+            const img = await ImageUtil.loadSafeUrl(path);
+            img._texSource = 'default';
+            img._texName = name;
+            img._safeCanvas = ImageUtil.toSafeCanvas(img, 640, 640);
+            this.textures.push(img);
+            ok++;
+            this._refreshTexUI();
+          } catch (e) {
+            console.warn('[tree-mosaic] 跳过:', path, e.message);
+          }
+        }));
+        if (ok === 0) {
+          this.$.texHint.textContent = 'flowers 素材加载失败，请确认已用 http 服务打开页面';
+        }
+        this._refreshTexUI();
+        this._updateMosaicBtn();
+      }
+
+      async _loadTex(files) {
+        this._err('');
+        for (const f of files) {
+          try {
+            const img = await ImageUtil.loadFile(f);
+            img._texSource = 'user';
+            img._texName = f.name;
+            img._safe = true;
+            img._safeCanvas = ImageUtil.toSafeCanvas(img, 640, 640);
+            this.textures.push(img);
+          } catch (e) {
+            this._err(e.message);
+          }
+        }
+        this._refreshTexUI();
+      }
+
+      _refreshTexUI() {
+        const def = this.textures.filter((t) => t._texSource === 'default').length;
+        const user = this.textures.filter((t) => t._texSource === 'user').length;
+        this.$.texZone.classList.toggle('ok', this.textures.length > 0);
+        if (def > 0 && user > 0) {
+          this.$.texHint.textContent = `默认 flowers ${def} 张 + 自定义 ${user} 张`;
+        } else if (def > 0) {
+          this.$.texHint.textContent = `默认 flowers ${def} 张（可继续批量上传）`;
+        } else {
+          this.$.texHint.textContent = user > 0 ? `自定义 ${user} 张` : '请上传拼贴素材';
+        }
+        this.$.texThumbs.innerHTML = '';
+        this.textures.forEach((img) => {
+          const wrap = document.createElement('span');
+          wrap.className = 'thumb-wrap' + (img._texSource === 'default' ? ' is-default' : '');
+          const el = document.createElement('img');
+          el.src = img._blobUrl || img.src || '';
+          el.alt = img._texName || '';
+          el.title = img._texName || '';
+          wrap.appendChild(el);
+          this.$.texThumbs.appendChild(wrap);
+        });
+        this._updateMosaicBtn();
+      }
+
+      _previewCanvas() {
+        const fit = ImageUtil.fit(this.workCanvas.width, this.workCanvas.height, CFG.PREVIEW_MAX);
+        if (fit.w === this.workCanvas.width) return this.workCanvas;
+        return ImageUtil.toCanvas(this.workCanvas, fit.w, fit.h);
+      }
+
+      _computePartition(canvas, params) {
+        const w = canvas.width, h = canvas.height;
+        const data = ImageUtil.getData(canvas);
+        const mask = BranchDetector.detect(data, params.sensitivity, params.trunk);
+        const { regionMap, regionCount } = RegionGen.generate(mask, w, h, params.regionSimplicity);
+        const bounds = RegionGen.bounds(regionMap, w, h, regionCount);
+        return { mask, regionMap, regionCount, bounds, w, h, canvas };
+      }
+
+      async updateRegionPreview() {
+        if (!this.workCanvas || this.busy) return;
+        this.busy = true;
+        this._err('');
+        this.$.status1.textContent = '正在计算分区…';
+        this._setBadge1('计算中', 'wait');
+
+        try {
+          const params = this._params();
+          const canvas = this._previewCanvas();
+          this.partition = this._computePartition(canvas, params);
+          this.partition.paramsKey = this._partitionKey(params);
+          this.partition.previewW = this.partition.w;
+          this.partition.previewH = this.partition.h;
+
+          Render.drawRegionPreview(
+            this.$.canvasRegions,
+            canvas,
+            this.partition.regionMap,
+            this.partition.mask,
+            this.partition.w,
+            this.partition.h,
+            this.partition.regionCount
+          );
+
+          this.$.ph1.hidden = true;
+          this.$.canvasRegions.hidden = false;
+          const filled = RegionGen.countFillable(this.partition.regionMap);
+          const pct = ((filled / (this.partition.w * this.partition.h)) * 100).toFixed(1);
+          this._setBadge1(`${this.partition.regionCount} 个区域`, 'ok');
+          const simp = this.$.regionSimplicity.value;
+          this.$.status1.textContent =
+            `约 ${this.partition.regionCount} 个大块区（简洁度 ${simp}）· 可填充 ${pct}%`;
+          this.mosaicReady = false;
+          this._setBadge2('可生成拼贴', 'ok');
+          this._updateMosaicBtn();
+        } catch (e) {
+          this._err(e.message);
+          this._setBadge1('失败', 'wait');
+        } finally {
+          this.busy = false;
+          this._updateMosaicBtn();
+        }
+      }
+
+      _mosaicCanvas(fast) {
+        const max = fast ? CFG.MOSAIC_FAST_MAX : CFG.MOSAIC_HD_MAX;
+        const fit = ImageUtil.fit(this.workCanvas.width, this.workCanvas.height, max);
+        if (fit.w === this.workCanvas.width && fit.h === this.workCanvas.height) {
+          return this.workCanvas;
+        }
+        return ImageUtil.toCanvas(this.workCanvas, fit.w, fit.h);
+      }
+
+      async generateMosaic(fast) {
+        if (this.busy || !this.partition) return;
+        if (!this._hasTextures()) return this._err('请先上传填充素材');
+
+        this.busy = true;
+        this._err('');
+        this.$.btnMosaicFast.disabled = true;
+        this.$.btnMosaicHd.disabled = true;
+        this._progress(0.05);
+        this.$.status2.textContent = fast ? '快速生成中（约 1280px）…' : '高清生成中，请稍候…';
+        this._setBadge2('生成中', 'wait');
+
+        try {
+          const params = this._params();
+          if (this._partitionKey(params) !== this.partition.paramsKey) {
+            throw new Error('检测参数已变化，请等待上方「分区预览」刷新后再生成');
+          }
+          const renderParams = {
+            ...params,
+            softEdge: fast ? false : params.softEdge
+          };
+          const mosaicCanvas = this._mosaicCanvas(fast);
+
+          this._progress(0.15);
+          this.$.status2.textContent = '按预览分区映射到输出尺寸…';
+          const fp = PartitionMapper.scale(
+            this.partition,
+            mosaicCanvas.width,
+            mosaicCanvas.height
+          );
+          this._progress(0.25);
+
+          const drawn = await Render.drawMosaic(
+            this.$.canvasFinal,
+            mosaicCanvas,
+            fp.regionMap,
+            fp.mask,
+            fp.bounds,
+            fp.w,
+            fp.h,
+            fp.regionCount,
+            this.textures,
+            renderParams,
+            (p, msg) => {
+              this._progress(0.25 + p * 0.7);
+              if (msg) this.$.status2.textContent = msg;
+            }
+          );
+
+          if (drawn < 1) throw new Error('未能绘制拼贴区块，请检查分区预览是否有色块');
+
+          this.$.ph2.hidden = true;
+          this.$.canvasFinal.hidden = false;
+          this.mosaicReady = true;
+          this.$.btnDownload.disabled = false;
+          this._setBadge2(fast ? '快速预览' : '高清完成', 'ok');
+          const op = this._opacityLabel();
+          this.$.status2.textContent =
+            fast
+              ? `已按预览分区绘制（${fp.w}×${fp.h}，等比填入，透明度 ${op}）`
+              : `高清完成：与预览同分区，素材等比不拉伸（透明度 ${op}）`;
+          this._progress(1);
+        } catch (e) {
+          this._err(e.message || '生成失败');
+          this.$.status2.textContent = '';
+          this._setBadge2('生成失败', 'wait');
+        } finally {
+          this.busy = false;
+          this._updateMosaicBtn();
+          setTimeout(() => this._progress(0), 500);
+        }
+      }
+
+      _hasTextures() {
+        return this.textures.some((t) => t.complete && t.naturalWidth > 0);
+      }
+
+      _updateMosaicBtn() {
+        const hasPartition = !!this.partition;
+        const hasTex = this._hasTextures();
+        const canRun = !this.busy && hasPartition && hasTex;
+
+        this.$.btnMosaicFast.disabled = !canRun;
+        this.$.btnMosaicHd.disabled = !canRun;
+
+        if (canRun) {
+          this.$.btnMosaicFast.title = '推荐：约 1280px，速度快';
+          this.$.btnMosaicHd.title = '最高 2400px，耗时较长';
+          this.$.mosaicHint.textContent =
+            `已就绪：${this.partition.regionCount} 区 · ${this.textures.length} 素材 · 透明度 ${this._opacityLabel()}`;
+        } else if (this.busy) {
+          this.$.btnMosaicFast.title = this.$.btnMosaicHd.title = '处理中…';
+          this.$.mosaicHint.textContent = '';
+        } else if (!hasPartition) {
+          this.$.btnMosaicFast.title = this.$.btnMosaicHd.title =
+            '请先上传主图，并等待分区预览完成';
+          this.$.mosaicHint.textContent = '缺少：分区预览未完成';
+        } else if (!hasTex) {
+          this.$.btnMosaicFast.title = this.$.btnMosaicHd.title =
+            '请上传素材或确认 flowers 已加载';
+          this.$.mosaicHint.textContent = '缺少：填充素材';
+        }
+      }
+
+      download() {
+        if (!this.mosaicReady) return this._err('请先生成拼图');
+        try {
+          const a = document.createElement('a');
+          a.download = 'tree-mosaic-' + Date.now() + '.png';
+          a.href = this.$.canvasFinal.toDataURL('image/png');
+          a.click();
+          this.$.status2.textContent = '已下载';
+        } catch {
+          this._err('导出失败，请缩小图片后重试');
+        }
+      }
+
+      _setBadge1(text, type) {
+        this.$.badge1.textContent = text;
+        this.$.badge1.className = 'badge' + (type === 'ok' ? '' : ' wait');
+      }
+
+      _setBadge2(text, type) {
+        this.$.badge2.textContent = text;
+        this.$.badge2.className = 'badge' + (type === 'ok' ? '' : ' wait');
+      }
+
+      _progress(r) {
+        const bar = this.$.progress, fill = this.$.progressBar;
+        if (r > 0 && r <= 1) { bar.classList.add('on'); fill.style.width = (r * 100) + '%'; }
+        else { bar.classList.remove('on'); fill.style.width = '0'; }
+      }
+
+      _err(msg) {
+        this.$.error.textContent = msg || '';
+        this.$.error.classList.toggle('on', !!msg);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new App());
+  })();
+  </script>
+</body>
+</html>
